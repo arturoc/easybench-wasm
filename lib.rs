@@ -169,7 +169,7 @@ use std::time::Duration;
 const ITER_SCALE_FACTOR: f64 = 1.1;
 
 // We try to spend this many seconds (roughly) in total on each benchmark.
-const BENCH_TIME_LIMIT_SECS: f64 = 1.0;
+const BENCH_TIME_LIMIT_SECS: f64 = 5.0;
 
 /// Statistics for a benchmark run.
 #[derive(Debug, PartialEq, Clone)]
@@ -285,7 +285,7 @@ fn run_bench<F, I>(time_limit_secs: f64, env: I, f: F) -> Stats where F: Fn(Vec<
         let iter_start = performance.now();      // Start the clock
         f(xs);
         let time = performance.now() - iter_start;
-        data.push((iters, time));
+        data.push((iters, Duration::from_secs_f64(time / 1_000.)));
     }
 
     // If the first iter in a sample is consistently slow, that's fine - that's why we do the
@@ -309,28 +309,24 @@ fn run_bench<F, I>(time_limit_secs: f64, env: I, f: F) -> Stats where F: Fn(Vec<
 // Overflows:
 //
 // * sum(x * x): num_samples <= 0.5 * log_k (1 + 2 ^ 64 (FACTOR - 1))
-fn regression(data: &[(usize, f64)]) -> (f64, f64) {
+fn regression(data: &[(usize, Duration)]) -> (f64, f64) {
     if data.len() < 2 {
         return (f64::NAN, f64::NAN);
     }
 
-    let data: Vec<(u64, u64)> = data.iter().map(|&(x,y)| (x as u64, as_nanos(y))).collect();
+    let data: Vec<(u64, Duration)> = data.iter().map(|&(x,y)| (x as u64, y)).collect();
     let n = data.len() as f64;
     let nxbar  = data.iter().map(|&(x,_)| x  ).sum::<u64>(); // iter_time > 5e-11 ns
-    let nybar  = data.iter().map(|&(_,y)| y  ).sum::<u64>(); // TIME_LIMIT < 2 ^ 64 ns
+    let nybar  = data.iter().map(|&(_,y)| y  ).sum::<Duration>(); // TIME_LIMIT < 2 ^ 64 ns
     let nxxbar = data.iter().map(|&(x,_)| x*x).sum::<u64>(); // num_iters < 13_000_000_000
-    let nyybar = data.iter().map(|&(_,y)| y*y).sum::<u64>(); // TIME_LIMIT < 4.3 e9 ns
-    let nxybar = data.iter().map(|&(x,y)| x*y).sum::<u64>();
-    let ncovar = nxybar as f64 - ((nxbar * nybar) as f64 / n);
+    let nyybar = data.iter().map(|&(_,y)| y.as_nanos() * y.as_nanos()).sum::<u128>(); // TIME_LIMIT < 4.3 e9 ns
+    let nxybar = data.iter().map(|&(x,y)| x as u128 * y.as_nanos()).sum::<u128>();
+    let ncovar = nxybar as f64 - ((nxbar as u128 * nybar.as_nanos()) as f64 / n);
     let nxvar  = nxxbar as f64 - ((nxbar * nxbar) as f64 / n);
-    let nyvar  = nyybar as f64 - ((nybar * nybar) as f64 / n);
+    let nyvar  = nyybar - ((nybar.as_nanos() * nybar.as_nanos()) / n as u128);
     let gradient = ncovar / nxvar;
-    let r2 = (ncovar * ncovar) / (nxvar * nyvar);
+    let r2 = (ncovar * ncovar) / (nxvar as u128 * nyvar) as f64;
     (gradient, r2)
-}
-
-fn as_nanos(x: f64) -> u64 {
-    (x * 1000_f64).round() as u64
 }
 
 // Stolen from `bencher`, where it's known as `black_box`.
