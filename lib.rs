@@ -163,6 +163,7 @@ extern crate humantime;
 use std::f64;
 use std::fmt::{self,Display,Formatter};
 use std::time::Duration;
+use std::hint::black_box;
 
 // Each time we take a sample we increase the number of iterations:
 //      iters = ITER_SCALE_FACTOR ^ sample_no
@@ -327,22 +328,4 @@ fn regression(data: &[(usize, Duration)]) -> (f64, f64) {
     let gradient = ncovar / nxvar;
     let r2 = (ncovar * ncovar) / (nxvar as u128 * nyvar) as f64;
     (gradient, r2)
-}
-
-// Stolen from `bencher`, where it's known as `black_box`.
-//
-// NOTE: We don't have a proper black box in stable Rust. This is
-// a workaround implementation, that may have a too big performance overhead,
-// depending on operation, or it may fail to properly avoid having code
-// optimized out. It is good enough that it is used by default.
-//
-// A function that is opaque to the optimizer, to allow benchmarks to
-// pretend to use outputs to assist in avoiding dead-code
-// elimination.
-pub fn black_box<T>(dummy: T) -> T {
-    unsafe {
-        let ret = ::std::ptr::read_volatile(&dummy);
-        ::std::mem::forget(dummy);
-        ret
-    }
 }
