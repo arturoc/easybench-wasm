@@ -249,7 +249,7 @@ pub fn bench_env_limit<F, I, O>(time_limit_secs: f64, env: I, f: F) -> Stats whe
     run_bench(time_limit_secs, env,
         |xs| {
             for i in xs.into_iter() {
-                pretend_to_use(f(i));             // Run the code and pretend to use the output
+                black_box(f(i));             // Run the code and pretend to use the output
             }
         }
     )
@@ -263,7 +263,7 @@ pub fn bench_env_limit_ref<F, I, O>(time_limit_secs: f64, env: I, f: F) -> Stats
     run_bench(time_limit_secs, env,
         |mut xs| {
             for i in xs.iter_mut() {
-                pretend_to_use(f(i));             // Run the code and pretend to use the output
+                black_box(f(i));             // Run the code and pretend to use the output
             }
         }
     )
@@ -339,7 +339,7 @@ fn regression(data: &[(usize, Duration)]) -> (f64, f64) {
 // A function that is opaque to the optimizer, to allow benchmarks to
 // pretend to use outputs to assist in avoiding dead-code
 // elimination.
-fn pretend_to_use<T>(dummy: T) -> T {
+pub fn black_box<T>(dummy: T) -> T {
     unsafe {
         let ret = ::std::ptr::read_volatile(&dummy);
         ::std::mem::forget(dummy);
